@@ -958,3 +958,44 @@ test('Walls', "area saves: a player may roll only their own flagged token; the a
   try { await _aoeResolveRemainingFast(false); T.eq(aoeResolveState.remaining.length, 1, 'player should still be waiting'); }
   finally { aoeResolveState = savedSt; }
 });
+test('Walls', 'Character Mode warns a GM when the loaded character is not the one on the map', async T => {
+  T.stub('isGM', () => true);
+  const s = { cc: currentCharacterId, camp: currentCampaignId, map: activeMapId, toks: mapTokens, cache: playCharCache };
+  const nav = document.getElementById('gm-config-nav'), navDisp = nav && nav.style.display; if (nav) nav.style.display = 'none';
+  const nameEl = document.getElementById('char-name'), savedName = nameEl.value;
+  try {
+    currentCharacterId = 'lv4'; currentCampaignId = 'c'; activeMapId = 'm'; nameEl.value = 'Fez';
+    mapTokens = { t1: { id: 't1', entity_type: 'character', entity_id: 'lv1', label: 'Fez' } };
+    playCharCache = { lv1: { name: 'Fez', stats: { XP: 0 } } };
+    updateCharMapBanner();
+    const el = document.getElementById('char-map-banner');
+    T.ok(el.style.display !== 'none' && /different/.test(el.textContent), 'twin warning missing: ' + el.textContent);
+    T.ok(/Open the one on the map/.test(el.innerHTML), 'button missing');
+    mapTokens = { t1: { id: 't1', entity_type: 'character', entity_id: 'lv4', label: 'Fez' } };
+    updateCharMapBanner();
+    T.eq(el.style.display, 'none', 'no banner when the loaded character is on the map');
+  } finally {
+    currentCharacterId = s.cc; currentCampaignId = s.camp; activeMapId = s.map; mapTokens = s.toks; playCharCache = s.cache;
+    nameEl.value = savedName; if (nav) nav.style.display = navDisp; updateCharMapBanner();
+  }
+});
+test('Walls', 'a dead token shows a small skull at its upper right and hides other condition icons', async T => {
+  T.stub('getTokenSize', () => 100);
+  T.stub('_dlgRefreshIfOpenFor', () => {}); T.stub('_updateTokenRing', () => {}); T.stub('scheduleLights', () => {});
+  T.stub('_fogApplyTokenVisibility', () => {});
+  const el = document.createElement('div');
+  el.id = 'token-zz-dead'; el.innerHTML = '<span class="token-label">Zz</span>';
+  document.body.appendChild(el);
+  const saved = mapTokens;
+  mapTokens = { 'zz-dead': { id: 'zz-dead', entity_type: 'item', conditions: ['dead', 'prone'] } };
+  try {
+    _refreshTokenBadges('zz-dead');
+    const ov = el.querySelector('.token-cond-overlay'), img = ov && ov.querySelector('img');
+    T.ok(img && img.style.width === '50px', 'skull should be half the token size, got ' + (img && img.style.width));
+    T.ok(/\+ 35px/.test(ov.style.left) && /- 35px/.test(ov.style.top), 'skull offset: ' + ov.style.left + ' / ' + ov.style.top);
+    T.ok(!el.querySelector('.token-label-icons'), 'other condition icons should be hidden on a dead token');
+    mapTokens['zz-dead'].conditions = ['prone'];
+    _refreshTokenBadges('zz-dead');
+    T.ok(el.querySelector('.token-label-icons'), 'icons come back when the token is revived');
+  } finally { mapTokens = saved; el.remove(); }
+});
